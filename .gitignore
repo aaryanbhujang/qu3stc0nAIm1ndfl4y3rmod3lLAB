@@ -65,7 +65,7 @@ coverage.xml
 uploads/
 
 # Docker
-Dockerfile*
+
 *.tar
 
 # Editor / IDE
