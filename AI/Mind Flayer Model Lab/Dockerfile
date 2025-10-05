@@ -1,7 +1,8 @@
 FROM python:3.10-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PORT=10000
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -10,7 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     zlib1g-dev \
     e2fsprogs \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Create a non-root user
 RUN useradd -m -u 1000 ctfuser
@@ -29,6 +31,6 @@ RUN chown root:root flag.txt && \
 # Switch to non-root user
 USER ctfuser
 
-EXPOSE 8000
-ENV PORT=8000 FLASK_ENV=production
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:8000", "app:app"]
+EXPOSE $PORT
+ENV FLASK_ENV=production
+CMD gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 120 --worker-class sync app:app

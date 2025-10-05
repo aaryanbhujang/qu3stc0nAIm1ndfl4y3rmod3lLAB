@@ -35,6 +35,10 @@ def create_app():
     def index():
         return render_template('index.html')
 
+    @app.route('/health')
+    def health():
+        return {'status': 'healthy', 'service': 'Mind Flayer Model Lab'}, 200
+
     @app.route('/upload', methods=['POST'])
     def upload():
         if 'model_file' not in request.files:
@@ -86,5 +90,5 @@ def create_app():
 app = create_app()
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 8000))
-    app.run(host='0.0.0.0', port=port, debug=os.getenv('FLASK_ENV') == 'development')
+    port = int(os.getenv('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False)
