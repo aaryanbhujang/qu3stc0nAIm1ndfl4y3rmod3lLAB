@@ -17,7 +17,7 @@ DEFAULT_MAX_MB = 10
 
 
 def create_app():
-    app = Flask(__name__, template_folder='templates')
+    app = Flask(__name__, template_folder='templates', static_folder='static')
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY') or secrets.token_hex(16)
     app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_MODEL_MB', DEFAULT_MAX_MB)) * 1024 * 1024
     uploads_dir = os.getenv('UPLOAD_FOLDER', tempfile.mkdtemp(prefix='uploads_'))
