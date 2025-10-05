@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>modest_mdel - Keras Model Inspector</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {font-family: system-ui, Arial, sans-serif; margin: 2rem; background: #0d1117; color: #e6edf3;}
+      h1 {margin-top: 0;}
+      form {margin-bottom: 2rem;}
+      .flash {padding: .75rem 1rem; border-radius: 6px; margin-bottom: 1rem;}
+      .flash.error {background:#2d0f12; border:1px solid #ff4d5b;}
+      .flash.success {background:#052915; border:1px solid #1fff86;}
+      .panel {background:#161b22; padding:1rem 1.25rem; border:1px solid #30363d; border-radius:8px;}
+      pre {white-space: pre-wrap; background:#0d1117; padding:1rem; overflow:auto; border:1px solid #30363d; border-radius:6px;}
+      a {color:#58a6ff;}
+      footer {margin-top:3rem; font-size:.8rem; opacity:.7;}
+      input[type=file] {margin-bottom: .5rem;}
+      button {background:#238636; border:1px solid #2ea043; color:#fff; padding:.5rem 1rem; border-radius:6px; cursor:pointer;}
+      button:hover {background:#2ea043;}
+    </style>
+  </head>
+  <body>
+    <h1>modest_mdel (Keras 2.12)</h1>
+    <p>Upload a model file (.h5 / .hdf5). The app loads it with <code>compile=False</code> and prints <code>model.summary()</code>.</p>
+    <div class="panel">
+      <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+        <input type="file" name="model_file" accept=".h5,.hdf5" required /> <br />
+        <button type="submit">Upload & Inspect</button>
+      </form>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, msg in messages %}
+            <div class="flash {{ category }}">{{ msg }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      {% if model_filename %}
+        <h2>Model: {{ model_filename }}</h2>
+        <p><a href="{{ url_for('download', filename=model_filename) }}">Download original file</a></p>
+        <p><strong>Total Params:</strong> {{ param_count }}</p>
+        <pre>{{ model_summary }}</pre>
+      {% endif %}
+    </div>
+    <footer>
+      <p>UTC Time: {{ now.strftime('%Y-%m-%d %H:%M:%S') }} | CTF / educational use only.</p>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,117 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+.mypy_cache/
+
+# Type checker
+.dmypy.json
+.dmypy
+
+# Jupyter
+.ipynb_checkpoints
+
+# Logs
+*.log
+
+# TensorFlow / Keras large artifacts (optional)
+*.h5
+*.hdf5
+*.pb
+
+# Uploaded models dir if created
+uploads/
+
+# Docker
+Dockerfile*
+*.tar
+
+# Editor / IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Node / front-end (if added later)
+node_modules/
+
+# Local env overrides
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Cache / tmp
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# Poetry / pipenv (if used later)
+poetry.lock
+Pipfile.lock
+
+# PyInstaller build directories
+pyinstaller-build/
+
+# Binary artifacts
+*.so
+*.dll
+*.dylib
+
+# Coverage HTML
+htmlcov/
+
+# C extensions
+*.c
+*.o
+*.pyd

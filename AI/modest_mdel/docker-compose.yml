@@ -1,0 +1,11 @@
+version: "3.9"
+services:
+  modest_mdel:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - FLASK_ENV=production
+      - MAX_MODEL_MB=10
+      - SECRET_KEY=replace-me
+    restart: unless-stopped
