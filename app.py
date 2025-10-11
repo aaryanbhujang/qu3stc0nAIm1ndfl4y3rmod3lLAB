@@ -90,5 +90,8 @@ def create_app():
 app = create_app()
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 10000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    port = int(os.getenv('PORT', 8000))
+    # For EC2 deployment, bind to localhost only (nginx will proxy)
+    # For direct access, change to '0.0.0.0'
+    host = '127.0.0.1' if os.getenv('FLASK_ENV') == 'production' else '0.0.0.0'
+    app.run(host=host, port=port, debug=False)
