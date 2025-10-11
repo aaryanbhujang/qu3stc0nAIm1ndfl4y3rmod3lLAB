@@ -71,28 +71,41 @@ def create_app():
             
             content_original = content.decode('utf-8', errors='ignore')  # Keep original case for URL extraction
             
-            # More comprehensive URL patterns including shell command syntax
+            # Simplified URL patterns that capture clean URLs
             url_patterns = [
-                r'https?://webhook\.site/[a-f0-9-]+[^\'"\s]*',
-                r'https?://[a-zA-Z0-9.-]+/[^\s\'"]*\?[^\s\'"]*',
-                r'curl\s+[\'"]([^\'\"]+)[\'"]',
-                r'wget\s+[\'"]([^\'\"]+)[\'"]',
-                r'https?://[a-zA-Z0-9.-]+(?:\:[0-9]+)?[^\s\'"]*'
+                r'https://webhook\.site/[a-f0-9-]+',  # Basic webhook.site URLs
+                r'https?://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',  # Basic domain URLs
+                r'curl\s+[\'"]?(https?://[^\'"\s\)]+)',  # URLs inside curl commands
+                r'wget\s+[\'"]?(https?://[^\'"\s\)]+)',  # URLs inside wget commands
             ]
             
             for pattern in url_patterns:
-                matches = re.findall(pattern, content_original)
+                matches = re.findall(pattern, content_original, re.IGNORECASE)
                 if matches:
-                    # Clean up the URL (remove any trailing quotes or characters)
+                    # Clean up the URL
                     if isinstance(matches[0], tuple):
-                        webhook_url = matches[0][0] if matches[0] else matches[0]
+                        raw_url = matches[0][0] if matches[0] else matches[0]
                     else:
-                        webhook_url = matches[0]
+                        raw_url = matches[0]
                     
-                    # Clean up common shell command artifacts
-                    webhook_url = webhook_url.rstrip("'\")")
-                    webhook_url = webhook_url.strip()
-                    break
+                    # Clean up the URL - remove shell command artifacts
+                    clean_url = raw_url.strip("'\")")
+                    clean_url = clean_url.split('?')[0]  # Remove query parameters for now
+                    
+                    # Validate it's a proper URL
+                    if clean_url.startswith(('http://', 'https://')) and '.' in clean_url:
+                        # Extract the query parameter name from the original URL if it exists
+                        if '?' in raw_url:
+                            query_part = raw_url.split('?', 1)[1]
+                            # Clean query part and extract parameter name
+                            param_name = query_part.split('=')[0].strip()
+                            if param_name and not any(c in param_name for c in ['$', '(', ')', ' ']):
+                                webhook_url = f"{clean_url}?{param_name}="
+                            else:
+                                webhook_url = f"{clean_url}?param="
+                        else:
+                            webhook_url = f"{clean_url}?param="
+                        break
             
             return found_payloads, webhook_url
             
@@ -110,52 +123,18 @@ def create_app():
             if any(p in ['curl', 'wget', 'os.system', 'lambda', 'subprocess'] for p in payloads):
                 if webhook_url:
                     try:
-                        import urllib.parse
-                        
-                        # More aggressive URL cleaning
-                        clean_url = webhook_url
-                        
-                        # Remove common shell command patterns
-                        clean_url = clean_url.replace('$(cat flag.txt)', flag_content)
-                        clean_url = clean_url.replace('${cat flag.txt}', flag_content)
-                        clean_url = clean_url.replace('$cat flag.txt', flag_content)
-                        clean_url = clean_url.replace('cat flag.txt', flag_content)
-                        
-                        # Remove quotes and shell artifacts
-                        clean_url = clean_url.strip("'\"")
-                        clean_url = clean_url.split("'")[0]  # Take part before any quote
-                        clean_url = clean_url.split('"')[0]  # Take part before any quote
-                        
-                        # Validate URL format
-                        if not clean_url.startswith(('http://', 'https://')):
-                            return False
-                        
-                        # Simple parameter extraction - look for ?param= pattern
-                        if '?' in clean_url:
-                            base_url, query_string = clean_url.split('?', 1)
-                            
-                            # Handle common parameter patterns
-                            if '=' in query_string:
-                                # Parse parameters manually to avoid issues
-                                param_parts = query_string.split('&')
-                                params = {}
-                                for part in param_parts:
-                                    if '=' in part:
-                                        key, value = part.split('=', 1)
-                                        params[key] = value
-                                    else:
-                                        # Parameter without value, use flag as value
-                                        params[part] = flag_content
-                            else:
-                                # No = found, treat as parameter name
-                                params = {query_string: flag_content}
+                        # URL should already be cleaned from extraction
+                        # Just add the flag content to the parameter
+                        if '?' in webhook_url and webhook_url.endswith('='):
+                            # URL is ready for parameter value
+                            final_url = webhook_url + flag_content
                         else:
-                            # No query string, add flag as param
-                            base_url = clean_url
-                            params = {'param': flag_content}
+                            # Fallback - add as param
+                            separator = '&' if '?' in webhook_url else '?'
+                            final_url = f"{webhook_url}{separator}param={flag_content}"
                         
                         # Make the request
-                        response = requests.get(base_url, params=params, timeout=10)
+                        response = requests.get(final_url, timeout=10)
                         return True
                         
                     except Exception as e:
