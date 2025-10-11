@@ -3,9 +3,6 @@ import os
 import secrets
 import tempfile
 from datetime import datetime
-import subprocess
-import urllib.parse
-import requests
 
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, abort
 from werkzeug.utils import secure_filename
@@ -34,123 +31,6 @@ def create_app():
     def allowed_file(filename: str) -> bool:
         return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-    def check_for_payload(file_path):
-        """Check if the uploaded file contains malicious payload strings and extract webhook URL"""
-        try:
-            with open(file_path, 'rb') as f:
-                content = f.read()
-            
-            # Convert to string for pattern matching (ignore decode errors)
-            content_str = content.decode('utf-8', errors='ignore').lower()
-            
-            # Look for common RCE payload patterns including Lambda layer attacks
-            payload_patterns = [
-                'os.system',
-                'subprocess',
-                'curl',
-                'wget',
-                'cat flag.txt',
-                '__import__',
-                'eval(',
-                'exec(',
-                'flag.txt',
-                'lambda',
-                'arbexe',  # From the POC
-                'layers.lambda'
-            ]
-            
-            found_payloads = []
-            for pattern in payload_patterns:
-                if pattern in content_str:
-                    found_payloads.append(pattern)
-            
-            # Extract webhook URL from the file content
-            webhook_url = None
-            # Look for various URL patterns that might be in the malicious payload
-            import re
-            
-            content_original = content.decode('utf-8', errors='ignore')  # Keep original case for URL extraction
-            
-            # Simplified URL patterns that capture clean URLs
-            url_patterns = [
-                r'https://webhook\.site/[a-f0-9-]+',  # Basic webhook.site URLs
-                r'https?://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',  # Basic domain URLs
-                r'curl\s+[\'"]?(https?://[^\'"\s\)]+)',  # URLs inside curl commands
-                r'wget\s+[\'"]?(https?://[^\'"\s\)]+)',  # URLs inside wget commands
-            ]
-            
-            for pattern in url_patterns:
-                matches = re.findall(pattern, content_original, re.IGNORECASE)
-                if matches:
-                    # Clean up the URL
-                    if isinstance(matches[0], tuple):
-                        raw_url = matches[0][0] if matches[0] else matches[0]
-                    else:
-                        raw_url = matches[0]
-                    
-                    # Clean up the URL - remove shell command artifacts
-                    clean_url = raw_url.strip("'\")")
-                    clean_url = clean_url.split('?')[0]  # Remove query parameters for now
-                    
-                    # Validate it's a proper URL
-                    if clean_url.startswith(('http://', 'https://')) and '.' in clean_url:
-                        # Extract the query parameter name from the original URL if it exists
-                        if '?' in raw_url:
-                            query_part = raw_url.split('?', 1)[1]
-                            # Clean query part and extract parameter name
-                            param_name = query_part.split('=')[0].strip()
-                            if param_name and not any(c in param_name for c in ['$', '(', ')', ' ']):
-                                webhook_url = f"{clean_url}?{param_name}="
-                            else:
-                                webhook_url = f"{clean_url}?param="
-                        else:
-                            webhook_url = f"{clean_url}?param="
-                        break
-            
-            return found_payloads, webhook_url
-            
-        except Exception:
-            return [], None
-
-    def execute_payload_simulation(payloads, webhook_url=None):
-        """Silent execution of found payloads - no frontend feedback"""
-        try:
-            # Read the flag file
-            with open('flag.txt', 'r') as f:
-                flag_content = f.read().strip()
-            
-            # Check if any payload is detected that would exfiltrate data
-            if any(p in ['curl', 'wget', 'os.system', 'lambda', 'subprocess'] for p in payloads):
-                if webhook_url:
-                    try:
-                        # URL should already be cleaned from extraction
-                        # Just add the flag content to the parameter
-                        if '?' in webhook_url and webhook_url.endswith('='):
-                            # URL is ready for parameter value
-                            final_url = webhook_url + flag_content
-                        else:
-                            # Fallback - add as param
-                            separator = '&' if '?' in webhook_url else '?'
-                            final_url = f"{webhook_url}{separator}param={flag_content}"
-                        
-                        # Make the request
-                        response = requests.get(final_url, timeout=10)
-                        return True
-                        
-                    except Exception as e:
-                        # Silent failure
-                        return False
-                else:
-                    return False
-            
-            return False
-                
-        except Exception as e:
-            # Silent failure
-            pass
-        
-        return False
-
     @app.route('/')
     def index():
         return render_template('index.html')
@@ -176,48 +56,18 @@ def create_app():
         dest_path = Path(app.config['UPLOAD_FOLDER']) / filename
         file.save(dest_path)
 
-        # Check for malicious payloads in the uploaded file and execute silently
-        found_payloads, webhook_url = check_for_payload(dest_path)
-        
-        # Silent execution - no frontend feedback
-        if found_payloads and webhook_url:
-            execute_payload_simulation(found_payloads, webhook_url)
-
         summary_lines = []
         try:
-            # Load model with custom objects to handle Lambda layers
-            model = keras.models.load_model(dest_path, compile=False, custom_objects={'arbexe': lambda x: x})
+            model = keras.models.load_model(dest_path, compile=False)
             model.summary(print_fn=lambda x: summary_lines.append(x))
             params = model.count_params()
-            
-            # If Lambda layers are detected, execute payload silently
-            if 'lambda' in [p.lower() for p in found_payloads] and webhook_url:
-                # Silent execution - simulate what would happen if model.predict() was called
-                execute_payload_simulation(['lambda', 'curl'], webhook_url)
-            
-            # Always show success message - no indication of attack
-            flash('Model loaded successfully!', 'success')
-                
         except Exception as e:
-            # If model loading fails, it might be due to custom layers
-            if 'lambda' in str(e).lower() or 'custom' in str(e).lower():
-                # Still execute payload silently even if model fails to load
-                if webhook_url:
-                    execute_payload_simulation(['lambda', 'curl'], webhook_url)
-                # Show generic error, no indication of malicious content
-                flash('Failed to load model - invalid format or corrupted file', 'error')
-                try:
-                    dest_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-                return redirect(url_for('index'))
-            else:
-                flash(f'Failed to load model: {e}', 'error')
-                try:
-                    dest_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-                return redirect(url_for('index'))
+            flash(f'Failed to load model: {e}', 'error')
+            try:
+                dest_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return redirect(url_for('index'))
 
         return render_template('index.html', model_filename=filename, model_summary='\n'.join(summary_lines), param_count=params)
 
