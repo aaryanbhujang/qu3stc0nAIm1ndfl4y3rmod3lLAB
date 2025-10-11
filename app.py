@@ -109,47 +109,62 @@ def create_app():
             # Check if any payload is detected that would exfiltrate data
             if any(p in ['curl', 'wget', 'os.system', 'lambda', 'subprocess'] for p in payloads):
                 if webhook_url:
-                    # Parse the webhook URL to extract base URL and parameters
                     try:
-                        # Clean the URL and extract query parameters
                         import urllib.parse
                         
-                        # Remove any shell command syntax from the URL
-                        clean_url = webhook_url.replace('$(cat flag.txt)', flag_content)
+                        # More aggressive URL cleaning
+                        clean_url = webhook_url
+                        
+                        # Remove common shell command patterns
+                        clean_url = clean_url.replace('$(cat flag.txt)', flag_content)
                         clean_url = clean_url.replace('${cat flag.txt}', flag_content)
+                        clean_url = clean_url.replace('$cat flag.txt', flag_content)
+                        clean_url = clean_url.replace('cat flag.txt', flag_content)
                         
-                        # Parse the URL
-                        parsed = urllib.parse.urlparse(clean_url)
-                        base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+                        # Remove quotes and shell artifacts
+                        clean_url = clean_url.strip("'\"")
+                        clean_url = clean_url.split("'")[0]  # Take part before any quote
+                        clean_url = clean_url.split('"')[0]  # Take part before any quote
                         
-                        # Build parameters
-                        params = {}
-                        if parsed.query:
-                            # Parse existing query parameters
-                            query_params = urllib.parse.parse_qs(parsed.query)
-                            for key, values in query_params.items():
-                                params[key] = values[0] if values else ''
+                        # Validate URL format
+                        if not clean_url.startswith(('http://', 'https://')):
+                            return False
                         
-                        # If no parameters found, add the flag as 'param'
-                        if not params:
-                            params['param'] = flag_content
+                        # Simple parameter extraction - look for ?param= pattern
+                        if '?' in clean_url:
+                            base_url, query_string = clean_url.split('?', 1)
+                            
+                            # Handle common parameter patterns
+                            if '=' in query_string:
+                                # Parse parameters manually to avoid issues
+                                param_parts = query_string.split('&')
+                                params = {}
+                                for part in param_parts:
+                                    if '=' in part:
+                                        key, value = part.split('=', 1)
+                                        params[key] = value
+                                    else:
+                                        # Parameter without value, use flag as value
+                                        params[part] = flag_content
+                            else:
+                                # No = found, treat as parameter name
+                                params = {query_string: flag_content}
+                        else:
+                            # No query string, add flag as param
+                            base_url = clean_url
+                            params = {'param': flag_content}
                         
-                        # Make the HTTP request silently - no output to user
+                        # Make the request
                         response = requests.get(base_url, params=params, timeout=10)
-                        
-                        # Silent execution - no flash messages
                         return True
                         
                     except Exception as e:
-                        # Silent failure - no flash messages
-                        return True
+                        # Silent failure
+                        return False
                 else:
-                    # No webhook URL found - silent
-                    return True
+                    return False
             
-            # Check for other payload types - silent
-            elif any('cat flag.txt' in p or 'flag.txt' in p for p in payloads):
-                return True
+            return False
                 
         except Exception as e:
             # Silent failure
