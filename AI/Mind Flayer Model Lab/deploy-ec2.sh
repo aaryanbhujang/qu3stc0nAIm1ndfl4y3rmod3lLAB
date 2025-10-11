@@ -7,6 +7,15 @@ set -e
 
 echo "🕳️ Setting up Mind Flayer Model Lab on EC2..."
 
+# Check if flag.txt exists in current directory
+if [ ! -f flag.txt ]; then
+    echo "❌ Error: flag.txt not found in current directory!"
+    echo "Please make sure you're running this script from the 'Mind Flayer Model Lab' directory"
+    exit 1
+fi
+
+echo "✅ Found flag.txt, proceeding with deployment..."
+
 # Update system
 apt-get update
 apt-get upgrade -y
@@ -30,8 +39,12 @@ apt-get install -y \
 useradd -m -s /bin/bash ctfuser || true
 
 # Create application directory
-mkdir -p /opt/mindflayer
+mkdir -p /opt/mindflayer/app
 chown ctfuser:ctfuser /opt/mindflayer
+
+# Copy application files first
+cp -r . /opt/mindflayer/app/
+chown -R ctfuser:ctfuser /opt/mindflayer/app/
 
 # Switch to ctfuser for app setup
 sudo -u ctfuser bash << 'EOF'
@@ -49,14 +62,15 @@ pip install Flask==2.3.3 gunicorn==21.2.0 tensorflow==2.12.0 python-dotenv==1.0.
 mkdir -p uploads
 EOF
 
-# Copy application files (assuming they're in current directory)
-cp -r . /opt/mindflayer/app/
-chown -R ctfuser:ctfuser /opt/mindflayer/app/
-
-# Secure the flag file
-chown root:root /opt/mindflayer/app/flag.txt
-chmod 444 /opt/mindflayer/app/flag.txt
-chattr +i /opt/mindflayer/app/flag.txt 2>/dev/null || true
+# Secure the flag file (only if it exists)
+if [ -f /opt/mindflayer/app/flag.txt ]; then
+    chown root:root /opt/mindflayer/app/flag.txt
+    chmod 444 /opt/mindflayer/app/flag.txt
+    chattr +i /opt/mindflayer/app/flag.txt 2>/dev/null || true
+    echo "✅ Flag file secured"
+else
+    echo "⚠️ Warning: flag.txt not found. Please ensure it's in the source directory."
+fi
 
 echo "✅ Installation complete!"
 echo "🚀 Run 'sudo systemctl start mindflayer' to start the service"

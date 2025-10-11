@@ -9,17 +9,28 @@
 
 ### 1. Upload Files to EC2
 ```bash
-# On your local machine
+# On your local machine - upload the entire directory
 scp -i your-key.pem -r "Mind Flayer Model Lab" ubuntu@your-ec2-ip:/tmp/
 ```
 
 ### 2. SSH into EC2 and Deploy
 ```bash
 ssh -i your-key.pem ubuntu@your-ec2-ip
+
+# Navigate to the uploaded directory
 cd "/tmp/Mind Flayer Model Lab"
-sudo chmod +x deploy-ec2.sh setup-services.sh
+
+# Make scripts executable
+sudo chmod +x *.sh
+
+# Run deployment (this will take a few minutes)
 sudo ./deploy-ec2.sh
+
+# Configure and start services
 sudo ./setup-services.sh
+
+# Verify deployment
+sudo ./verify-deployment.sh
 ```
 
 ### 3. Access Your CTF
