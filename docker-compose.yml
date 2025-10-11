@@ -1,11 +1,24 @@
 version: "3.9"
 services:
-  modest_mdel:
+  mindflayer:
     build: .
+    container_name: mindflayer-app
     ports:
-      - "8000:8000"
+      - "80:8000"    # Map host port 80 to container port 8000
     environment:
       - FLASK_ENV=production
-      - MAX_MODEL_MB=10
-      - SECRET_KEY=replace-me
+      - PORT=8000
+      - MAX_MODEL_MB=50
+      - SECRET_KEY=mindflayer-secret-key
+    volumes:
+      - uploads:/app/uploads
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  uploads:
