@@ -200,16 +200,6 @@ Typical CTF AI app flows:
 - Upload/Import a Keras model (`.h5` file).
 - The backend loads the model and may run an initial forward pass to “validate” or generate a sample prediction.
 
-Steps I used:
-1. Upload `whoami.h5` to the application’s “Import Model” feature.
-2. Trigger an inference (e.g., click “Predict”, submit any input tensor/JSON).
-3. Check your webhook for a hit. Decode base64 if used:
-   ```bash
-   echo "BASE64_PAYLOAD" | base64 -d
-   ```
-4. Repeat with `ls.h5` to enumerate directories.
-5. Finally, upload `hactf.h5` (cat payload) to retrieve the flag. Confirm exfil at your webhook.
-
 
 ## 5) Results
 
