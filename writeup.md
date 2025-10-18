@@ -7,7 +7,7 @@ This writeup documents how I identified a vulnerable TensorFlow/Keras stack from
 ---
 
 ## TL;DR
-- Recon: View-Source showed TensorFlow 2.13.1 in the page, which is affected by CVE-2024-3660.
+- Recon: View-Source showed TensorFlow 2.12 in the page, which is affected by CVE-2024-3660.
 - Weaponize: Used the PoC to craft a malicious `.h5` model with a `Lambda` layer that executes arbitrary OS commands when the model is loaded/invoked.
 - Execution: Triggered the model load/inference on the target to run `whoami`, `ls`, and finally `cat` to exfiltrate the flag via a webhook.
 
@@ -18,7 +18,7 @@ This writeup documents how I identified a vulnerable TensorFlow/Keras stack from
 1. Load the application’s landing page in a browser.
 2. Right-click → “View Page Source” (or open Developer Tools → Sources).
 3. Search for `tensorflow` or `tf`. In this challenge, a comment/asset reference disclosed the exact wheel used:
-   - `tensorflow_cpu-2.13.1` (cp38 manylinux wheel)
+   - `tensorflow_cpu-2.12` (cp38 manylinux wheel)
 4. Cross-check that TensorFlow/Keras version against the CVE:
    - CVE: [CVE-2024-3660](https://nvd.nist.gov/vuln/detail/CVE-2024-3660)
    - Affected: Keras model deserialization and Lambda layers can lead to Arbitrary Code Execution (ACE/RCE) when untrusted models are loaded.
